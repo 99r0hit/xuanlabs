@@ -124,7 +124,13 @@ export default function App() {
   const [showCentroids, setShowCentroids] = useState(true);
   const [calculateWavelength, setCalculateWavelength] = useState(true);
 
-
+function updatePoint(setIdx, ptIdx, axis, value) {
+  setSets((prev) => {
+    const copy = JSON.parse(JSON.stringify(prev));
+    copy[setIdx].points[ptIdx][axis === "x" ? 0 : 1] = Number(value);
+    return copy;
+  });
+}
   /* ----------------------- AUTO UPDATE SETS WHEN NUM CHANGES ----------------------- */
 
   useEffect(() => {
