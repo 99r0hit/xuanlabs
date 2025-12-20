@@ -1,15 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
 
 /*
-  XUANLABS — CIE 1931 Color Compliance & Comparison Tool
-  Full Production Version
+  XUANLABS — CIE 1931 Chromaticity Comparator
+  FULL, FIXED, PRODUCTION VERSION
 */
 
-/* ----------------------- COLOR CONVERSION ----------------------- */
+/* ----------------------- COLOR CONVERSION HELPERS ----------------------- */
 
 function xyY_to_XYZ([x, y, Y]) {
   if (y === 0) return [0, 0, 0];
-  return [(x * Y) / y, Y, ((1 - x - y) * Y) / y];
+  const X = (x * Y) / y;
+  const Z = ((1 - x - y) * Y) / y;
+  return [X, Y, Z];
 }
 
 function XYZ_to_sRGB([X, Y, Z]) {
@@ -17,12 +19,13 @@ function XYZ_to_sRGB([X, Y, Z]) {
   let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
   let b = 0.0557 * X - 0.204 * Y + 1.057 * Z;
 
-  const compand = (c) =>
-    c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  const compand = (c) => {
+    c = Math.max(0, c);
+    if (c <= 0.0031308) return 12.92 * c;
+    return 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+  };
 
-  return [r, g, b].map((v) =>
-    Math.min(255, Math.max(0, compand(Math.max(0, v)) * 255))
-  );
+  return [compand(r), compand(g), compand(b)];
 }
 
 /* ----------------------- SPECTRAL LOCUS ----------------------- */
@@ -35,42 +38,65 @@ const SPECTRAL_LOCUS = {
   620: [0.6915, 0.3083], 640: [0.719, 0.2809], 660: [0.73, 0.27]
 };
 
-function dominantWavelength(x, y) {
-  let best = { wl: "Purple", d: Infinity };
+function nearestSpectralPoint(x, y) {
+  let best = { wl: null, dist: Infinity, x: 0, y: 0 };
   Object.entries(SPECTRAL_LOCUS).forEach(([wl, [sx, sy]]) => {
     const d = Math.hypot(x - sx, y - sy);
-    if (d < best.d) best = { wl, d };
+    if (d < best.dist) best = { wl: Number(wl), dist: d, x: sx, y: sy };
   });
-  return best.d < 0.06 ? `${best.wl} nm` : "Purple (Non-spectral)";
+  return best;
 }
 
-/* ----------------------- HELPERS ----------------------- */
+function calculateDominantWavelength(x, y) {
+  const nearest = nearestSpectralPoint(x, y);
+  if (nearest.dist <= 0.06) return nearest.wl;
+  return "Purple";
+}
 
-const defaultPolygon = (i) =>
-  Array.from({ length: 4 }, (_, k) => [0.65 + i * 0.02 + k * 0.005, 0.32 - k * 0.01]);
+function calculatePurity(x, y, white = [0.3333, 0.3333]) {
+  const dom = calculateDominantWavelength(x, y);
+  if (dom === "Purple") return 1;
+  const ref = SPECTRAL_LOCUS[dom];
+  const dTotal = Math.hypot(ref[0] - white[0], ref[1] - white[1]);
+  const dSample = Math.hypot(x - white[0], y - white[1]);
+  return dTotal === 0 ? 0 : Math.min(1, dSample / dTotal);
+}
+
+/* ----------------------- DEFAULT POLYGON ----------------------- */
+
+function defaultPolygon(idx, n = 4) {
+  return Array.from({ length: n }, (_, i) => [
+    0.68 + idx * 0.01 + i * 0.005,
+    0.30 - idx * 0.01 - i * 0.005
+  ]);
+}
 
 /* ----------------------- APP ----------------------- */
 
 export default function App() {
   const canvasRef = useRef(null);
-  const [authenticated, setAuth] = useState(false);
+
+  const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState("");
 
   const [numSets, setNumSets] = useState(2);
   const [sets, setSets] = useState([
-    { name: "LED Batch A", points: defaultPolygon(0) },
-    { name: "LED Batch B", points: defaultPolygon(1) }
+    { name: "LED Set 1", points: defaultPolygon(0) },
+    { name: "LED Set 2", points: defaultPolygon(1) }
   ]);
 
-const [showFill, setShowFill] = useState(true);
-const [showCentroids, setShowCentroids] = useState(true);
+  const [showFill, setShowFill] = useState(false);
+  const [showPoints, setShowPoints] = useState(true);
+  const [showBorders, setShowBorders] = useState(true);
+  const [showCentroids, setShowCentroids] = useState(true);
+  const [showWavelength, setShowWavelength] = useState(true);
 
   /* ----------------------- AUTH ----------------------- */
 
   function login(e) {
     e.preventDefault();
     if (password === (process.env.REACT_APP_CIE_APP_PASSWORD || "Rohit123"))
-      setAuth(true);
+      setAuthenticated(true);
     else alert("Incorrect password");
   }
 
@@ -78,39 +104,39 @@ const [showCentroids, setShowCentroids] = useState(true);
 
   useEffect(() => {
     setSets((prev) => {
-      const c = [...prev];
-      while (c.length < numSets)
-        c.push({ name: `LED Batch ${c.length + 1}`, points: defaultPolygon(c.length) });
-      return c.slice(0, numSets);
+      const copy = [...prev];
+      while (copy.length < numSets)
+        copy.push({ name: `LED Set ${copy.length + 1}`, points: defaultPolygon(copy.length) });
+      return copy.slice(0, numSets);
     });
   }, [numSets]);
 
   /* ----------------------- DRAW ----------------------- */
 
-  useEffect(draw, [sets, showFill, showCentroids]);
+  useEffect(draw, [sets, showFill, showPoints, showBorders, showCentroids, showWavelength]);
 
   function draw() {
-    const c = canvasRef.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    const W = c.width, H = c.height;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
 
     ctx.clearRect(0, 0, W, H);
 
-    // Background
     const img = ctx.createImageData(W, H);
-    for (let j = 0; j < H; j++)
-      for (let i = 0; i < W; i++) {
-        const x = i / W * 0.8;
-        const y = 1 - j / H;
-        const [X, Y, Z] = xyY_to_XYZ([x, y, 1]);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const cx = (x / W) * 0.8;
+        const cy = 1 - y / H;
+        const [X, Y, Z] = xyY_to_XYZ([cx, cy, 1]);
         const [r, g, b] = XYZ_to_sRGB([X, Y, Z]);
-        const idx = (j * W + i) * 4;
-        img.data[idx] = r;
-        img.data[idx + 1] = g;
-        img.data[idx + 2] = b;
-        img.data[idx + 3] = 255;
+        const i = (y * W + x) * 4;
+        img.data[i] = r * 255;
+        img.data[i + 1] = g * 255;
+        img.data[i + 2] = b * 255;
+        img.data[i + 3] = 255;
       }
+    }
     ctx.putImageData(img, 0, 0);
 
     const toCanvas = ([x, y]) => [x / 0.8 * W, H - y * H];
@@ -120,8 +146,8 @@ const [showCentroids, setShowCentroids] = useState(true);
       const pts = s.points.map(toCanvas);
 
       if (showFill) {
-        ctx.globalAlpha = 0.25;
-        ctx.fillStyle = colors[si];
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = colors[si % colors.length];
         ctx.beginPath();
         pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
         ctx.closePath();
@@ -129,19 +155,32 @@ const [showCentroids, setShowCentroids] = useState(true);
         ctx.globalAlpha = 1;
       }
 
-      pts.forEach(([x, y], pi) => {
-        ctx.fillStyle = colors[si];
+      if (showBorders) {
+        ctx.strokeStyle = colors[si % colors.length];
         ctx.beginPath();
-        ctx.arc(x, y, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillText(dominantWavelength(...s.points[pi]), x + 6, y - 6);
-      });
+        pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      if (showPoints) {
+        pts.forEach(([x, y], pi) => {
+          ctx.beginPath();
+          ctx.fillStyle = colors[si % colors.length];
+          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.fill();
+          if (showWavelength) {
+            const wl = calculateDominantWavelength(...s.points[pi]);
+            ctx.fillText(wl === "Purple" ? "Purple" : `${wl}nm`, x + 6, y);
+          }
+        });
+      }
 
       if (showCentroids) {
         const cx = s.points.reduce((a, p) => a + p[0], 0) / s.points.length;
         const cy = s.points.reduce((a, p) => a + p[1], 0) / s.points.length;
         const [x, y] = toCanvas([cx, cy]);
-        ctx.strokeStyle = colors[si];
+        ctx.strokeStyle = "black";
         ctx.beginPath();
         ctx.moveTo(x - 8, y - 8);
         ctx.lineTo(x + 8, y + 8);
@@ -157,85 +196,56 @@ const [showCentroids, setShowCentroids] = useState(true);
   function downloadPNG() {
     const a = document.createElement("a");
     a.href = canvasRef.current.toDataURL("image/png");
-    a.download = "xuanlabs_cie_comparison.png";
+    a.download = "cie_chromaticity.png";
+    a.click();
+  }
+
+  function downloadCSV() {
+    let csv = "Set,Point,x,y,Wavelength,Purity\n";
+    sets.forEach((s) =>
+      s.points.forEach((p, i) => {
+        const wl = calculateDominantWavelength(p[0], p[1]);
+        csv += `${s.name},P${i + 1},${p[0]},${p[1]},${wl},${calculatePurity(p[0], p[1])}\n`;
+      })
+    );
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "cie_data.csv";
     a.click();
   }
 
   /* ----------------------- UI ----------------------- */
 
   return (
-    <div style={{ fontFamily: "Inter, sans-serif", padding: 20 }}>
-      <h1>Xuanlabs · Color Compliance Tool</h1>
+    <div style={{ fontFamily: "Inter, Arial", padding: 20 }}>
+      <h1>Xuanlabs · CIE 1931 Chromaticity Comparator</h1>
 
       {!authenticated ? (
-        <>
-          <p>
-            Browser-based CIE 1931 chromaticity comparison tool for LED,
-            display & optical engineers.
-          </p>
-
-          <form onSubmit={login} style={{ maxWidth: 360 }}>
-            <input
-              type="password"
-              placeholder="Access password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ width: "100%", padding: 8 }}
-            />
-            <button style={{ marginTop: 10 }}>Unlock Tool</button>
-          </form>
-        </>
+        <form onSubmit={login}>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <button>Unlock</button>
+        </form>
       ) : (
         <>
           <label>
             LED Sets:
-            <input
-              type="number"
-              min={1}
-              max={5}
-              value={numSets}
-              onChange={(e) => setNumSets(+e.target.value)}
-            />
+            <input type="number" min={1} max={6} value={numSets}
+              onChange={(e) => setNumSets(+e.target.value)} />
           </label>
 
-          {sets.map((s, si) => (
-            <fieldset key={si}>
-              <legend>{s.name}</legend>
-              {s.points.map((p, pi) => (
-                <div key={pi}>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={p[0]}
-                    onChange={(e) => {
-                      const c = [...sets];
-                      c[si].points[pi][0] = +e.target.value;
-                      setSets(c);
-                    }}
-                  />
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={p[1]}
-                    onChange={(e) => {
-                      const c = [...sets];
-                      c[si].points[pi][1] = +e.target.value;
-                      setSets(c);
-                    }}
-                  />
-                </div>
-              ))}
-            </fieldset>
-          ))}
+          <div>
+            <button onClick={downloadPNG}>PNG</button>
+            <button onClick={downloadCSV}>CSV</button>
+          </div>
 
-          <button onClick={downloadPNG}>Download PNG</button>
-
-          <canvas
-            ref={canvasRef}
-            width={900}
-            height={650}
-            style={{ marginTop: 20, border: "1px solid #ccc" }}
-          />
+          <canvas ref={canvasRef} width={900} height={650}
+            style={{ border: "1px solid #ccc", marginTop: 20 }} />
         </>
       )}
     </div>
