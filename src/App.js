@@ -62,8 +62,8 @@ export default function App() {
     { name: "LED Batch B", points: defaultPolygon(1) }
   ]);
 
-  const [showFill, setShowFill] = useState(true);
-  const [showCentroids, setShowCentroids] = useState(true);
+const [showFill, setShowFill] = useState(true);
+const [showCentroids, setShowCentroids] = useState(true);
 
   /* ----------------------- AUTH ----------------------- */
 
