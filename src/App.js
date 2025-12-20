@@ -2,38 +2,46 @@ import React, { useEffect, useRef, useState } from "react";
 
 /*
   App.jsx - Optimized CIE 1931 Chromaticity Comparator
-  - Auto-zoom canvas with DPR support
-  - Improved dominant wavelength detection (spectral-locus distance)
-  - Debounced redraw for performance
-  - Responsive layout, navigation, info before auth, collapsible panels
-  - No external deps; drop into CRA/Vite at src/App.jsx
+  ---------------------------------------------------
+  • Auto-zoom canvas with DPR support
+  • Dominant wavelength detection (spectral locus)
+  • Debounced redraw for performance
+  • Responsive UI with auth + navigation
+  • Single-file, no external dependencies
 */
 
-/* -----------------------
-   Color helpers (xyY -> XYZ -> sRGB)
-   ----------------------- */
-function xyY_to_XYZ(xyY) {
-  const [x, y, Y] = xyY;
+/* ============================================================
+   COLOR CONVERSION HELPERS (xyY → XYZ → sRGB)
+============================================================ */
+
+function xyY_to_XYZ([x, y, Y]) {
   if (y === 0) return [0, 0, 0];
+
   const X = (x * Y) / y;
   const Z = ((1 - x - y) * Y) / y;
+
   return [X, Y, Z];
 }
+
 function XYZ_to_sRGB([X, Y, Z]) {
   let r = 3.2406 * X - 1.5372 * Y - 0.4986 * Z;
   let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
   let b = 0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+
   const compand = (c) => {
     c = Math.max(0, c);
-    if (c <= 0.0031308) return 12.92 * c;
-    return 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return c <= 0.0031308
+      ? 12.92 * c
+      : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
   };
+
   return [compand(r), compand(g), compand(b)];
 }
 
-/* -----------------------
-   Spectral locus & wavelength helpers
-   ----------------------- */
+/* ============================================================
+   SPECTRAL LOCUS & WAVELENGTH CALCULATION
+============================================================ */
+
 const SPECTRAL_LOCUS = {
   380: [0.1741, 0.0050], 385: [0.1740, 0.0050], 390: [0.1738, 0.0049],
   395: [0.1736, 0.0049], 400: [0.1733, 0.0048], 405: [0.1730, 0.0048],
@@ -63,69 +71,50 @@ const SPECTRAL_LOCUS = {
   755: [0.7347, 0.2653], 760: [0.7347, 0.2653], 765: [0.7347, 0.2653],
   770: [0.7347, 0.2653], 775: [0.7347, 0.2653], 780: [0.7347, 0.2653]
 };
+
 function nearestSpectralPoint(x, y) {
   let best = { wl: null, dist: Infinity, x: 0, y: 0 };
-  for (const wlStr of Object.keys(SPECTRAL_LOCUS)) {
-    const wl = Number(wlStr);
-    const [xl, yl] = SPECTRAL_LOCUS[wl];
+
+  Object.entries(SPECTRAL_LOCUS).forEach(([wl, [xl, yl]]) => {
     const d = Math.hypot(x - xl, y - yl);
-    if (d < best.dist) best = { wl, dist: d, x: xl, y: yl };
-  }
+    if (d < best.dist) best = { wl: Number(wl), dist: d, x: xl, y: yl };
+  });
+
   return best;
 }
-function calculate_dominant_wavelength(x, y, reference_white = [0.3333, 0.3333]) {
-  // threshold controls how strict we are in calling a point "spectral"
+
+function calculate_dominant_wavelength(x, y) {
   const THRESHOLD = 0.06;
   const nearest = nearestSpectralPoint(x, y);
+
   if (nearest.dist <= THRESHOLD) {
     return { wavelength: nearest.wl, isComplementary: false, nearest };
   }
+
   return { wavelength: "Purple (Non-spectral)", isComplementary: true, nearest };
 }
-function calculate_color_purity(x, y, reference_white = [0.3333, 0.3333]) {
-  const dom = calculate_dominant_wavelength(x, y, reference_white);
-  if (dom.isComplementary || dom.wavelength === "Purple (Non-spectral)") return 1.0;
+
+function calculate_color_purity(x, y, white = [0.3333, 0.3333]) {
+  const dom = calculate_dominant_wavelength(x, y);
+  if (dom.isComplementary) return 1.0;
+
   const { x: xl, y: yl } = dom.nearest;
-  const distTotal = Math.hypot(xl - reference_white[0], yl - reference_white[1]);
-  const distSample = Math.hypot(x - reference_white[0], y - reference_white[1]);
-  if (distTotal === 0) return 0;
-  return Math.min(1, distSample / distTotal);
+  const total = Math.hypot(xl - white[0], yl - white[1]);
+  const sample = Math.hypot(x - white[0], y - white[1]);
+
+  return total === 0 ? 0 : Math.min(1, sample / total);
 }
 
-/* -----------------------
-   Utility: default polygon
-   ----------------------- */
-function defaultPolygon(idx, nPoints) {
-  const pts = [];
-  for (let i = 0; i < nPoints; i++) {
-    const dx = 0.68 + idx * 0.01 + i * 0.005;
-    const dy = 0.30 - idx * 0.01 - i * 0.005;
-    pts.push([dx, dy]);
-  }
-  return pts;
+/* ============================================================
+   UTILITY HELPERS
+============================================================ */
+
+function defaultPolygon(idx, n) {
+  return Array.from({ length: n }, (_, i) => [
+    0.68 + idx * 0.01 + i * 0.005,
+    0.30 - idx * 0.01 - i * 0.005
+  ]);
 }
-
-/* -----------------------
-   Inline styles (simple, responsive-friendly)
-   ----------------------- */
-const styles = {
-  container: { fontFamily: "Inter, Arial, sans-serif", padding: 16, maxWidth: 1200, margin: "0 auto" },
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, flexWrap: "wrap" },
-  nav: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
-  navLink: { cursor: "pointer", padding: "6px 10px", borderRadius: 6, color: "#111", textDecoration: "none", background: "transparent", border: "1px solid transparent" },
-  infoCard: { background: "#fff", borderRadius: 8, padding: 14, boxShadow: "0 2px 8px rgba(0,0,0,0.06)", marginBottom: 12 },
-  grid: { display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" },
-  leftCol: { flex: "0 0 380px", minWidth: 280 },
-  rightCol: { flex: 1, minWidth: 300 },
-  fieldset: { border: "1px solid #e5e7eb", padding: 10, borderRadius: 6, marginBottom: 8, background: "#fff" },
-  smallInput: { width: 110, padding: 6, borderRadius: 6, border: "1px solid #d1d5db" },
-  checkbox: { marginRight: 6 },
-  primaryButton: { padding: "8px 12px", borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", cursor: "pointer" },
-  secondaryButton: { padding: "8px 12px", borderRadius: 6, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer" },
-  canvasWrapper: { width: "100%", height: "60vh", borderRadius: 8, overflow: "hidden", background: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.06)", border: "1px solid #e5e7eb" },
-  footerNote: { marginTop: 12, color: "#374151" }
-};
-
 /* -----------------------
    Main App component
    ----------------------- */
@@ -204,7 +193,7 @@ export default function App() {
   }, [sets, showFill, showPoints, showBorders, showCentroids, calculateWavelength, autoZoom]);
 
   /* Draw function (auto-zoom, background generation, plotting) */
-  function draw() {
+    function draw() {
     const canvas = canvasRef.current;
     if (!canvas || !containerRef.current) return;
     const ctx = canvas.getContext("2d");
