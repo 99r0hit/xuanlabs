@@ -441,31 +441,52 @@ export default function App() {
 
       {/* Info Section (visible before auth and available after) */}
       <section id="about" style={styles.infoCard}>
-        <h3 style={{ marginTop: 0 }}>CIE 1931 Chromaticity Comparator</h3>
-        <p style={{ marginTop: 6, marginBottom: 8, color: "#374151" }}>
-          A professional LED color visualization and analysis tool built for engineers, manufacturers, and R&D teams. Visualize, compare, and analyze LED color specifications using the CIE 1931 diagram — all in real time.
-        </p>
+  <h3 style={{ marginTop: 0 }}>
+    Xuanlabs · Color Accuracy Validation Platform
+  </h3>
 
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-          <div>🔄 Compare 1–6 LED sets simultaneously</div>
-          <div>🎯 Real-time chromaticity plotting</div>
-          <div>⭐ Centroids, polygon areas & distance matrices</div>
-          <div>📊 Gamut overlap visualization</div>
-          <div>💾 Export HD PNG charts</div>
-          <div>🔒 Password-protected access</div>
-          <div>📱 Fully responsive design</div>
-        </div>
+  <p style={{ marginTop: 6, marginBottom: 10, color: "#374151", fontSize: 15 }}>
+    <strong>
+      Xuanlabs helps hardware teams visually validate and communicate color accuracy —
+      in minutes, not hours.
+    </strong>
+  </p>
 
-        <div>
-          <strong>Industry Applications</strong>
-          <ul style={{ color: "#374151" }}>
-            <li>LED Manufacturing</li>
-            <li>Display Engineering</li>
-            <li>Color Science R&D</li>
-            <li>Embedded & Sensor Systems</li>
-          </ul>
-        </div>
-      </section>
+  <p style={{ marginBottom: 10, color: "#374151" }}>
+    This tool is built for engineers who work with LEDs, displays, sensors, and optical
+    systems and need a fast, visual way to compare chromaticity data, identify deviations,
+    and explain results clearly to teams, customers, and management.
+  </p>
+
+  <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+    <div>⚡ Validate LED & display color points instantly</div>
+    <div>📐 Compare multiple bins, batches, or suppliers</div>
+    <div>🎯 Identify wavelength spread & purity at a glance</div>
+    <div>🧠 Replace manual spreadsheets & static plots</div>
+    <div>📊 Generate visuals ready for reports & reviews</div>
+  </div>
+
+  <div style={{ marginBottom: 10 }}>
+    <strong>Who is this for?</strong>
+    <ul style={{ color: "#374151", marginTop: 6 }}>
+      <li>LED & lighting manufacturers</li>
+      <li>Display and optical system engineers</li>
+      <li>Color science & validation teams</li>
+      <li>R&D, quality, and application engineering teams</li>
+    </ul>
+  </div>
+
+  <div style={{ color: "#374151" }}>
+    <strong>Why teams use Xuanlabs:</strong>
+    <ul style={{ marginTop: 6 }}>
+      <li>Reduce color validation time from hours to minutes</li>
+      <li>Make chromaticity data understandable to non-experts</li>
+      <li>Spot issues early before production or shipment</li>
+      <li>Create a single visual source of truth for color decisions</li>
+    </ul>
+  </div>
+</section>
+
 
       {/* App / Auth */}
       <section id="app">
