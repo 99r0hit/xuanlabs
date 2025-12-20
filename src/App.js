@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-
+import styles from "./styles";
 /*
   App.jsx - Optimized CIE 1931 Chromaticity Comparator
   ---------------------------------------------------
