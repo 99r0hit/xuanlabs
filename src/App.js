@@ -79,23 +79,19 @@ export default function App() {
     });
   }, [numSets]);
 
-  /* ===== DRAW ===== */
+  /* ===== DRAW (INLINE – CI SAFE) ===== */
 
   useEffect(() => {
-    draw();
-  }, [sets]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-  function draw() {
-    const c = canvasRef.current;
-    if (!c) return;
-
-    const ctx = c.getContext("2d");
-    const W = c.width;
-    const H = c.height;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width;
+    const H = canvas.height;
 
     ctx.clearRect(0, 0, W, H);
 
-    /* Background */
+    // Background
     const img = ctx.createImageData(W, H);
     for (let j = 0; j < H; j++) {
       for (let i = 0; i < W; i++) {
@@ -118,14 +114,12 @@ export default function App() {
     sets.forEach((s, si) => {
       const pts = s.points.map(toCanvas);
 
-      /* Polygon */
       ctx.strokeStyle = colors[si % colors.length];
       ctx.beginPath();
       pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
       ctx.closePath();
       ctx.stroke();
 
-      /* Points */
       pts.forEach(([x, y], pi) => {
         ctx.fillStyle = colors[si % colors.length];
         ctx.beginPath();
@@ -140,22 +134,8 @@ export default function App() {
           y - 4
         );
       });
-
-      /* Centroid */
-      const cx =
-        s.points.reduce((a, p) => a + p[0], 0) / s.points.length;
-      const cy =
-        s.points.reduce((a, p) => a + p[1], 0) / s.points.length;
-      const [x, y] = toCanvas([cx, cy]);
-      ctx.strokeStyle = "black";
-      ctx.beginPath();
-      ctx.moveTo(x - 8, y - 8);
-      ctx.lineTo(x + 8, y + 8);
-      ctx.moveTo(x + 8, y - 8);
-      ctx.lineTo(x - 8, y + 8);
-      ctx.stroke();
     });
-  }
+  }, [sets]);
 
   /* ===== EXPORT ===== */
 
@@ -163,21 +143,6 @@ export default function App() {
     const a = document.createElement("a");
     a.href = canvasRef.current.toDataURL("image/png");
     a.download = "cie_chromaticity.png";
-    a.click();
-  }
-
-  function downloadCSV() {
-    let csv = "Set,Point,x,y,Wavelength\n";
-    sets.forEach((s) =>
-      s.points.forEach((p, i) => {
-        const wl = dominantWavelength(p[0], p[1]);
-        csv += `${s.name},P${i + 1},${p[0]},${p[1]},${wl}\n`;
-      })
-    );
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "cie_data.csv";
     a.click();
   }
 
@@ -222,9 +187,6 @@ export default function App() {
 
           <div style={{ marginTop: 10 }}>
             <button onClick={downloadPNG}>Download PNG</button>
-            <button onClick={downloadCSV} style={{ marginLeft: 8 }}>
-              Download CSV
-            </button>
           </div>
 
           <canvas
